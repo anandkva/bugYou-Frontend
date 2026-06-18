@@ -35,7 +35,7 @@ import {
 } from "lucide-react";
 import "./styles.css";
 
-const API_URL = "http://localhost:8081";
+const API_URL = "https://bug-you-backend.vercel.app";
 
 const products = [
   "ZenClass",
