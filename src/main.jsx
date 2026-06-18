@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   AlertCircle,
@@ -9,6 +9,7 @@ import {
   ClipboardList,
   Clock,
   Eye,
+  EyeOff,
   Frown,
   HeartHandshake,
   Home,
@@ -17,7 +18,11 @@ import {
   Plus,
   Search,
   Smile,
+  Trash2,
+  UserCheck,
+  UserCog,
   UserPlus,
+  XCircle,
 } from 'lucide-react';
 import './styles.css';
 
@@ -26,8 +31,11 @@ const API_URL = 'https://bug-you-backend.vercel.app';
 const products = ['ZenClass', 'Classify', 'Hyernet', 'PlacementInfo', 'GuviPortal', 'Other'];
 const categories = ['UI', 'Backend/API', 'Login/Auth', 'Payment', 'Performance', 'Data Issue', 'New Requirement', 'Other'];
 const priorities = ['Low', 'Medium', 'High', 'Critical'];
-const statuses = ['Open', 'On Hold', 'Resolved'];
+const statuses = ['Open', 'On Hold', 'Resolved', 'Rejected'];
 const devices = ['Chrome on Mac', 'Chrome on Windows', 'Chrome on Android', 'Safari on iPhone', 'Safari on Mac', 'Firefox', 'Edge', 'Mobile App', 'Other'];
+
+const PUBLIC_VIEWS = ['docs'];
+
 const routes = {
   '/': 'report',
   '/my-tickets': 'my',
@@ -36,6 +44,8 @@ const routes = {
   '/track': 'track',
   '/dashboard': 'dashboard',
   '/manage': 'manage',
+  '/my-tasks': 'my-tasks',
+  '/manage-devs': 'manage-devs',
   '/docs': 'docs',
 };
 
@@ -44,8 +54,11 @@ function viewFromPath() {
 }
 
 function pathFromView(view) {
-  return Object.entries(routes).find(([, routeView]) => routeView === view)?.[0] || '/report';
+  const found = Object.entries(routes).find(([, routeView]) => routeView === view);
+  return found ? found[0] : '/report';
 }
+
+/* ─── App ─────────────────────────────────────────────────────────────────── */
 
 function App() {
   const [session, setSession] = useState(() => {
@@ -53,6 +66,8 @@ function App() {
     return raw ? JSON.parse(raw) : null;
   });
   const [view, setView] = useState(viewFromPath);
+  const [transitioning, setTransitioning] = useState(false);
+  const transitionTimer = useRef(null);
 
   useEffect(() => {
     if (session) localStorage.setItem('bugyou-session', JSON.stringify(session));
@@ -66,31 +81,49 @@ function App() {
   }, []);
 
   function navigate(nextView) {
-    const path = pathFromView(nextView);
-    setView(nextView);
-    window.history.pushState({}, '', path);
+    if (nextView === view) return;
+    setTransitioning(true);
+    clearTimeout(transitionTimer.current);
+    transitionTimer.current = setTimeout(() => {
+      setView(nextView);
+      window.history.pushState({}, '', pathFromView(nextView));
+      setTransitioning(false);
+    }, 180);
   }
 
-  if (!session && view !== 'docs') return <AuthScreen onSession={setSession} onDocs={() => navigate('docs')} />;
-  if (!session && view === 'docs') return <DocsPage onNavigate={navigate} />;
+  if (!session && !PUBLIC_VIEWS.includes(view)) {
+    return <AuthScreen onSession={setSession} onDocs={() => navigate('docs')} />;
+  }
+  if (!session && view === 'docs') {
+    return <DocsPage onNavigate={() => navigate('report')} />;
+  }
 
+  const isAdmin = session.user.role === 'admin';
   const isDeveloper = session.user.role === 'developer';
-  const navItems = isDeveloper
+
+  const navItems = isAdmin
     ? [
         ['dashboard', 'Dashboard', BarChart3],
-        ['manage', 'Bug Management', ClipboardList],
+        ['manage', 'All Tasks', ClipboardList],
+        ['manage-devs', 'Manage Devs', UserCog],
         ['track', 'Track Ticket', Search],
-        ['docs', 'Portal Guide', BookOpen],
       ]
-    : [
-        ['my', 'My Tickets', ClipboardList],
-        ['report', 'Report Issue', Plus],
-        ['track', 'Track Ticket', Search],
-        ['docs', 'Portal Guide', BookOpen],
-      ];
+    : isDeveloper
+      ? [
+          ['dashboard', 'Dashboard', BarChart3],
+          ['my-tasks', 'My Tasks', UserCheck],
+          ['manage', 'Bug Management', ClipboardList],
+          ['track', 'Track Ticket', Search],
+        ]
+      : [
+          ['my', 'My Tickets', ClipboardList],
+          ['report', 'Report Issue', Plus],
+          ['track', 'Track Ticket', Search],
+        ];
 
   return (
     <div className="app-shell">
+      {/* ── Desktop sidebar ───────────────────────────────────────────── */}
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-mark"><Bug size={20} /></span>
@@ -116,17 +149,60 @@ function App() {
         </div>
       </aside>
 
+      {/* ── Mobile top header ─────────────────────────────────────────── */}
+      <header className="mobile-header">
+        <div className="brand mobile-brand">
+          <span className="brand-mark brand-mark-sm"><Bug size={16} /></span>
+          <strong>BugYou</strong>
+        </div>
+        <div className="mobile-header-right">
+          <span className="mobile-user-chip">{session.user.name[0]?.toUpperCase()}</span>
+          <button className="icon-button" onClick={() => setSession(null)} title="Log out">
+            <LogOut size={18} />
+          </button>
+        </div>
+      </header>
+
+      {/* ── Main content ──────────────────────────────────────────────── */}
       <main className="content">
+        {transitioning && <PageLoader />}
         {view === 'docs' && <DocsPage onNavigate={navigate} inApp />}
         {view === 'report' && <ReportIssue token={session.token} />}
         {view === 'track' && <TrackTicket token={session.token} />}
         {view === 'my' && <MyIssues token={session.token} />}
+        {view === 'my-tasks' && <MyTasksView token={session.token} session={session} />}
         {view === 'dashboard' && <DeveloperDashboard token={session.token} />}
-        {view === 'manage' && <BugManagement token={session.token} />}
+        {view === 'manage' && <BugManagement token={session.token} session={session} />}
+        {view === 'manage-devs' && <ManageDevelopers token={session.token} />}
       </main>
+
+      {/* ── Mobile bottom navigation ──────────────────────────────────── */}
+      <nav className="bottom-nav" aria-label="Main navigation">
+        {navItems.map(([id, label, Icon]) => (
+          <button
+            key={id}
+            className={`bottom-nav-item${view === id ? ' active' : ''}`}
+            onClick={() => navigate(id)}
+            aria-label={label}
+          >
+            <Icon size={20} />
+            <span>{label}</span>
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }
+
+function PageLoader() {
+  return (
+    <div className="page-loader">
+      <div className="page-loader-bar" />
+    </div>
+  );
+}
+
+/* ─── Auth ────────────────────────────────────────────────────────────────── */
 
 function AuthScreen({ onSession, onDocs }) {
   const [mode, setMode] = useState('login');
@@ -162,7 +238,6 @@ function AuthScreen({ onSession, onDocs }) {
         </div>
         <form onSubmit={submit}>
           <div className="form-heading">
-            <span className="eyebrow"><HeartHandshake size={15} /> Mobile first support desk</span>
             <h1>{mode === 'login' ? 'Welcome back' : 'Create account'}</h1>
             <p>{mode === 'login' ? 'Bring every product issue into one gentle, accountable place.' : 'Start reporting issues with clear ticket tracking.'}</p>
           </div>
@@ -170,7 +245,7 @@ function AuthScreen({ onSession, onDocs }) {
             <Field label="Name" value={form.name} onChange={(name) => setForm({ ...form, name })} required />
           )}
           <Field label="Email" type="email" value={form.email} onChange={(email) => setForm({ ...form, email })} required />
-          <Field label="Password" type="password" value={form.password} onChange={(password) => setForm({ ...form, password })} required />
+          <PasswordField label="Password" value={form.password} onChange={(password) => setForm({ ...form, password })} required />
           {state.error && <Notice tone="error">{state.error}</Notice>}
           {state.success && <Notice tone="success">Login complete. Opening your workspace.</Notice>}
           <button className="primary-button" disabled={state.loading}>
@@ -185,12 +260,14 @@ function AuthScreen({ onSession, onDocs }) {
         </button>
         <button className="text-button muted" onClick={onDocs}>
           <BookOpen size={16} />
-          Read portal guide
+          View Portal Guide
         </button>
       </section>
     </main>
   );
 }
+
+/* ─── Report Issue ────────────────────────────────────────────────────────── */
 
 function ReportIssue({ token }) {
   const [form, setForm] = useState({
@@ -252,6 +329,8 @@ function ReportIssue({ token }) {
   );
 }
 
+/* ─── Track Ticket ────────────────────────────────────────────────────────── */
+
 function TrackTicket({ token }) {
   const [ticketId, setTicketId] = useState('');
   const [issue, setIssue] = useState(null);
@@ -289,34 +368,79 @@ function TrackTicket({ token }) {
   );
 }
 
+/* ─── My Issues (user) ────────────────────────────────────────────────────── */
+
 function MyIssues({ token }) {
-  const { data, error, reload } = useApi('/api/issues/my', token);
+  const { data, error, loading, reload } = useApi('/api/issues/my', token);
   return (
     <section>
       <PageHeader title="My Tickets" subtitle="Issues and requirements reported from your account." action={<button className="secondary-button" onClick={reload}>Refresh</button>} />
       {error && <Notice tone="error">{error}</Notice>}
+      {loading && <LoadingPanel label="Loading your tickets" />}
       <IssueTable issues={data?.issues || []} />
     </section>
   );
 }
 
+/* ─── My Tasks (developer's assigned tickets) ─────────────────────────────── */
+
+function MyTasksView({ token, session }) {
+  const { data, error, loading, reload } = useApi('/api/developer/issues/my-tasks', token);
+  const [viewing, setViewing] = useState(null);
+
+  return (
+    <section>
+      <PageHeader
+        title="My Tasks"
+        subtitle="Tickets that have been assigned to you."
+        action={<button className="secondary-button" onClick={reload}>Refresh</button>}
+      />
+      {error && <Notice tone="error">{error}</Notice>}
+      {loading && <LoadingPanel label="Loading your tasks" />}
+      {!loading && (data?.issues || []).length === 0 && !error && (
+        <div className="empty surface">No tasks assigned to you yet</div>
+      )}
+      <IssueTable issues={data?.issues || []} onView={setViewing} currentUserEmail={session?.user?.email} />
+      {viewing && <TicketDetailModal issue={viewing} onClose={() => setViewing(null)} />}
+    </section>
+  );
+}
+
+/* ─── Developer Dashboard ─────────────────────────────────────────────────── */
+
 function DeveloperDashboard({ token }) {
   const [filter, setFilter] = useState('all');
   const [product, setProduct] = useState('');
   const [viewing, setViewing] = useState(null);
+
   const trendRange = filter === 'last-week' ? 'last-week' : 'last-month';
-  const trendPath = `/api/developer/analytics/issue-trend?range=${trendRange}${product ? `&product=${product}` : ''}`;
-  const trend = useApi(trendPath, token, [trendRange, product]);
   const reminders = useApi('/api/developer/reminders', token);
+
   const summaryQuery = new URLSearchParams({
     ...(product ? { product } : {}),
     ...dateFilterParams(filter),
   }).toString();
-  const bugIssues = useApi(`/api/developer/issues?type=Bug${summaryQuery ? `&${summaryQuery}` : ''}`, token, [filter, product]);
-  const requirementIssues = useApi(`/api/developer/issues?type=New Requirement${summaryQuery ? `&${summaryQuery}` : ''}`, token, [filter, product]);
+
+  const bugIssues = useApi(
+    `/api/developer/issues?type=Bug${summaryQuery ? `&${summaryQuery}` : ''}`,
+    token,
+    [filter, product],
+  );
+  const requirementIssues = useApi(
+    `/api/developer/issues?type=New Requirement${summaryQuery ? `&${summaryQuery}` : ''}`,
+    token,
+    [filter, product],
+  );
+
+  // ── FIX: call the dedicated analytics endpoint instead of building client-side ──
+  const trendQuery = new URLSearchParams({ range: trendRange, ...(product ? { product } : {}) }).toString();
+  const trendApi = useApi(`/api/developer/analytics/issue-trend?${trendQuery}`, token, [trendRange, product]);
+
   const bugSummary = summarizeByStatus(bugIssues.data?.issues || []);
   const requirementSummary = summarizeByStatus(requirementIssues.data?.issues || []);
-  const remindersByType = splitIssuesByType((reminders.data?.reminders || []).map((item) => ({ ...item.issue, pendingDays: item.pendingDays })));
+  const remindersByType = splitIssuesByType(
+    (reminders.data?.reminders || []).map((item) => ({ ...item.issue, pendingDays: item.pendingDays })),
+  );
 
   return (
     <section>
@@ -327,25 +451,30 @@ function DeveloperDashboard({ token }) {
       </div>
       {bugIssues.error && <Notice tone="error">{bugIssues.error}</Notice>}
       {requirementIssues.error && <Notice tone="error">{requirementIssues.error}</Notice>}
+      {(bugIssues.loading || requirementIssues.loading) && <LoadingPanel label="Loading dashboard" />}
       <div className="dashboard-split">
         <section>
           <h2 className="section-title">Bugs</h2>
           <div className="metric-grid">
-            <Metric icon={AlertCircle} label="Open Bugs" value={bugSummary.open} />
-            <Metric icon={Clock} label="On Hold Bugs" value={bugSummary.onHold} />
-            <Metric icon={CheckCircle2} label="Resolved Bugs" value={bugSummary.resolved} />
+            <Metric icon={AlertCircle} label="Open" value={bugSummary.open} color="teal" />
+            <Metric icon={Clock} label="On Hold" value={bugSummary.onHold} color="amber" />
+            <Metric icon={CheckCircle2} label="Resolved" value={bugSummary.resolved} color="green" />
+            <Metric icon={XCircle} label="Rejected" value={bugSummary.rejected} color="red" />
           </div>
         </section>
         <section>
           <h2 className="section-title">New Requirements</h2>
           <div className="metric-grid">
-            <Metric icon={AlertCircle} label="Open Requirements" value={requirementSummary.open} />
-            <Metric icon={Clock} label="On Hold Requirements" value={requirementSummary.onHold} />
-            <Metric icon={CheckCircle2} label="Resolved Requirements" value={requirementSummary.resolved} />
+            <Metric icon={AlertCircle} label="Open" value={requirementSummary.open} color="teal" />
+            <Metric icon={Clock} label="On Hold" value={requirementSummary.onHold} color="amber" />
+            <Metric icon={CheckCircle2} label="Resolved" value={requirementSummary.resolved} color="green" />
+            <Metric icon={XCircle} label="Rejected" value={requirementSummary.rejected} color="red" />
           </div>
         </section>
       </div>
-      <IssueTrendChart data={trend.data} error={trend.error} />
+
+      <IssueTrendChart data={trendApi.data} loading={trendApi.loading} error={trendApi.error} />
+
       <h2 className="section-title">Pending Bug Reminders</h2>
       {reminders.error && <Notice tone="error">{reminders.error}</Notice>}
       <IssueTable issues={remindersByType.bugs} showPending onView={setViewing} />
@@ -356,19 +485,51 @@ function DeveloperDashboard({ token }) {
   );
 }
 
-function BugManagement({ token }) {
+/* ─── Bug Management ──────────────────────────────────────────────────────── */
+
+function BugManagement({ token, session }) {
   const [filters, setFilters] = useState({ product: '', status: '', priority: '', type: '', category: '' });
   const [issueKind, setIssueKind] = useState('Bug');
   const [selected, setSelected] = useState(null);
   const [viewing, setViewing] = useState(null);
+  const [assigning, setAssigning] = useState(null);
+
+  const isAdmin = session?.user?.role === 'admin';
+  const isDeveloper = session?.user?.role === 'developer';
+
   const activeFilters = { ...filters, type: issueKind };
-  const query = new URLSearchParams(Object.fromEntries(Object.entries(activeFilters).filter(([, value]) => value))).toString();
+  const query = new URLSearchParams(
+    Object.fromEntries(Object.entries(activeFilters).filter(([, value]) => value)),
+  ).toString();
   const path = `/api/developer/issues${query ? `?${query}` : ''}`;
-  const { data, error, reload } = useApi(path, token, [query, issueKind]);
+  const { data, error, loading, reload } = useApi(path, token, [query, issueKind]);
+
+  async function handleDelete(issue) {
+    if (!window.confirm(`Delete ticket ${issue.ticketId}? This cannot be undone.`)) return;
+    try {
+      await api(`/api/admin/issues/${issue.id}`, { method: 'DELETE', token });
+      reload();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function handleSelfAssign(issue) {
+    try {
+      await api(`/api/developer/issues/${issue.id}/assign-self`, { method: 'PATCH', token });
+      reload();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
 
   return (
     <section>
-      <PageHeader title="Ticket Management" subtitle="Bugs and new requirements stay in separate work queues." action={<button className="secondary-button" onClick={reload}>Refresh</button>} />
+      <PageHeader
+        title={isAdmin ? 'All Tasks' : 'Ticket Management'}
+        subtitle="Bugs and new requirements stay in separate work queues."
+        action={<button className="secondary-button" onClick={reload}>Refresh</button>}
+      />
       <div className="segmented-tabs" role="tablist" aria-label="Ticket type">
         {['Bug', 'New Requirement'].map((type) => (
           <button
@@ -390,12 +551,103 @@ function BugManagement({ token }) {
         <Select label="Category" value={filters.category} options={['', ...categories]} onChange={(category) => setFilters({ ...filters, category })} />
       </div>
       {error && <Notice tone="error">{error}</Notice>}
-      <IssueTable issues={data?.issues || []} onSelect={setSelected} onView={setViewing} />
+      {loading && <LoadingPanel label="Loading tasks" />}
+      <IssueTable
+        issues={data?.issues || []}
+        onSelect={setSelected}
+        onView={setViewing}
+        onDelete={isAdmin ? handleDelete : undefined}
+        onAssign={isAdmin ? setAssigning : undefined}
+        onSelfAssign={isDeveloper ? handleSelfAssign : undefined}
+        currentUserEmail={session?.user?.email}
+      />
       {viewing && <TicketDetailModal issue={viewing} onClose={() => setViewing(null)} />}
-      {selected && <StatusModal issue={selected} token={token} onClose={() => setSelected(null)} onSaved={() => { setSelected(null); reload(); }} />}
+      {selected && (
+        <StatusModal
+          issue={selected}
+          token={token}
+          onClose={() => setSelected(null)}
+          onSaved={() => { setSelected(null); reload(); }}
+        />
+      )}
+      {assigning && (
+        <AssignDeveloperModal
+          issue={assigning}
+          token={token}
+          onClose={() => setAssigning(null)}
+          onSaved={() => { setAssigning(null); reload(); }}
+        />
+      )}
     </section>
   );
 }
+
+/* ─── Manage Developers (Admin) ───────────────────────────────────────────── */
+
+function ManageDevelopers({ token }) {
+  const { data, error, loading, reload } = useApi('/api/admin/developers', token);
+  const [form, setForm] = useState({ name: '', email: '', password: '' });
+  const [formState, setFormState] = useState({ loading: false, error: '', success: '' });
+
+  async function createDeveloper(event) {
+    event.preventDefault();
+    setFormState({ loading: true, error: '', success: '' });
+    try {
+      await api('/api/admin/create-developer', { method: 'POST', token, body: form });
+      setFormState({ loading: false, error: '', success: `Developer "${form.name}" created successfully!` });
+      setForm({ name: '', email: '', password: '' });
+      reload();
+    } catch (err) {
+      setFormState({ loading: false, error: err.message, success: '' });
+    }
+  }
+
+  return (
+    <section>
+      <PageHeader title="Manage Developers" subtitle="Create developer accounts and view existing team members." />
+
+      <form className="surface form-grid" onSubmit={createDeveloper}>
+        <h2 className="section-title form-section-title">Create Developer Account</h2>
+        <Field label="Full Name" value={form.name} onChange={(name) => setForm({ ...form, name })} required />
+        <Field label="Email Address" type="email" value={form.email} onChange={(email) => setForm({ ...form, email })} required />
+        <PasswordField label="Password" value={form.password} onChange={(password) => setForm({ ...form, password })} required />
+        {formState.error && <Notice tone="error">{formState.error}</Notice>}
+        {formState.success && <Notice tone="success">{formState.success}</Notice>}
+        <button className="primary-button" disabled={formState.loading}>
+          {formState.loading && <LoaderCircle className="spin" size={18} />}
+          {formState.loading ? 'Creating account' : 'Create Developer'}
+        </button>
+      </form>
+
+      <div className="dev-section-header">
+        <h2 className="section-title">Developer Accounts</h2>
+        <button className="secondary-button" onClick={reload}>Refresh</button>
+      </div>
+
+      {error && <Notice tone="error">{error}</Notice>}
+      {loading && <LoadingPanel label="Loading developers" />}
+
+      {!loading && (data?.developers || []).length === 0 && !error && (
+        <div className="empty surface">No developer accounts yet</div>
+      )}
+
+      <div className="dev-list">
+        {(data?.developers || []).map((dev) => (
+          <div key={dev.id} className="surface dev-card">
+            <div className="dev-avatar">{dev.name?.[0]?.toUpperCase() || '?'}</div>
+            <div className="dev-info">
+              <strong>{dev.name}</strong>
+              <span>{dev.email}</span>
+            </div>
+            <small className="dev-joined">Joined {formatDate(dev.createdAt)}</small>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ─── Status Modal ────────────────────────────────────────────────────────── */
 
 function StatusModal({ issue, token, onClose, onSaved }) {
   const [status, setStatus] = useState(issue.status);
@@ -436,6 +688,63 @@ function StatusModal({ issue, token, onClose, onSaved }) {
   );
 }
 
+/* ─── Assign Developer Modal (Admin) ─────────────────────────────────────── */
+
+function AssignDeveloperModal({ issue, token, onClose, onSaved }) {
+  const devs = useApi('/api/admin/developers', token);
+  const [selectedDevId, setSelectedDevId] = useState(issue.assignedTo?.id || '');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function save(event) {
+    event.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      await api(`/api/admin/issues/${issue.id}/assign`, {
+        method: 'PATCH',
+        token,
+        body: { developerId: selectedDevId },
+      });
+      onSaved();
+    } catch (err) {
+      setError(err.message);
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop">
+      <form className="modal" onSubmit={save}>
+        <h2>Assign Developer</h2>
+        <p>{issue.ticketId} · {issue.title}</p>
+        {devs.loading && <LoadingPanel label="Loading developers" />}
+        {!devs.loading && (
+          <label className="field">
+            <span>Developer</span>
+            <select value={selectedDevId} onChange={(e) => setSelectedDevId(e.target.value)}>
+              <option value="">— Unassigned —</option>
+              {(devs.data?.developers || []).map((dev) => (
+                <option key={dev.id} value={dev.id}>{dev.name} ({dev.email})</option>
+              ))}
+            </select>
+          </label>
+        )}
+        {error && <Notice tone="error">{error}</Notice>}
+        <div className="modal-actions">
+          <button type="button" className="secondary-button" onClick={onClose}>Cancel</button>
+          <button className="primary-button" disabled={loading || devs.loading}>
+            {loading && <LoaderCircle className="spin" size={17} />}
+            {loading ? 'Saving' : 'Save Assignment'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+/* ─── Issue Detail ────────────────────────────────────────────────────────── */
+
 function IssueDetail({ issue }) {
   return (
     <div className="surface detail-grid">
@@ -448,10 +757,15 @@ function IssueDetail({ issue }) {
       <Info label="Priority" value={<PriorityBadge value={issue.priority} />} />
       <Info label="Category" value={issue.category} />
       <Info label="Created Date" value={formatDate(issue.createdAt)} />
+      {issue.assignedTo && (
+        <Info label="Assigned To" value={personLabel(issue.assignedTo)} />
+      )}
       <Info label="Developer Comment" value={<CommentSummary comment={latestComment(issue)} />} wide />
     </div>
   );
 }
+
+/* ─── Ticket Detail Modal ─────────────────────────────────────────────────── */
 
 function TicketDetailModal({ issue, onClose }) {
   return (
@@ -475,6 +789,11 @@ function TicketDetailModal({ issue, onClose }) {
           <Info label="Priority" value={<PriorityBadge value={issue.priority} />} />
           <Info label="Created Date" value={formatDate(issue.createdAt)} />
           <Info label="Browser / Device" value={issue.browserDevice || '-'} />
+          {issue.assignedTo ? (
+            <Info label="Assigned To" value={personLabel(issue.assignedTo)} />
+          ) : (
+            <Info label="Assigned To" value="Unassigned" />
+          )}
           <Info label="Attachment" value={attachmentValue(issue.attachmentUrl)} wide />
           <Info label="Description" value={longText(issue.description)} wide />
           <Info label="Steps to Reproduce" value={longText(issue.stepsToReproduce)} wide />
@@ -487,7 +806,7 @@ function TicketDetailModal({ issue, onClose }) {
           {issue.developerComments?.length ? (
             issue.developerComments.map((comment, index) => (
               <div className="comment-entry" key={`${comment.updatedAt}-${index}`}>
-                <span>{comment.oldStatus} to {comment.newStatus}</span>
+                <span>{comment.oldStatus} → {comment.newStatus}</span>
                 <p>{comment.comment}</p>
                 <small>By {comment.updatedBy || 'Developer'} · {formatDate(comment.updatedAt)}</small>
               </div>
@@ -505,47 +824,86 @@ function TicketDetailModal({ issue, onClose }) {
   );
 }
 
-function IssueTable({ issues, onSelect, onView, showPending = false }) {
+/* ─── Issue Table ─────────────────────────────────────────────────────────── */
+
+function IssueTable({ issues, onSelect, onView, showPending = false, onDelete, onAssign, onSelfAssign, currentUserEmail }) {
   return (
     <div className="issue-list">
       {issues.length === 0 && <div className="empty surface">No issues found</div>}
-      {issues.map((issue) => (
-        <article className="issue-card surface" key={issue.id}>
-          <div className="issue-card-top">
-            <span className="ticket-pill">{issue.ticketId}</span>
-            <StatusBadge value={issue.status} />
-          </div>
-          <h3>{issue.title}</h3>
-          <div className="issue-meta">
-            <span>{issue.product}</span>
-            <span>{issue.type}</span>
-            <span>{issue.category}</span>
-          </div>
-          <div className="issue-card-grid">
-            <Info label="Created By" value={personLabel(issue.createdBy)} />
-            <Info label="Priority" value={<PriorityBadge value={issue.priority} />} />
-            {showPending && <Info label="Pending" value={`${issue.pendingDays} days`} />}
-            <Info label="Created" value={formatDate(issue.createdAt)} />
-          </div>
-          {(onView || onSelect) && (
-            <div className="issue-actions">
-              {onView && (
-                <button className="small-button" onClick={() => onView(issue)}>
-                  <Eye size={16} /> View Details
-                </button>
-              )}
-              {onSelect && (
-                <button className="small-button" onClick={() => onSelect(issue)}>
-                  Update Status
-                </button>
+      {issues.map((issue) => {
+        const isAssignedToMe = issue.assignedTo?.email === currentUserEmail;
+        const isUnassigned = !issue.assignedTo;
+
+        return (
+          <article className={`issue-card surface${issue.status === 'Rejected' ? ' issue-card--rejected' : ''}`} key={issue.id}>
+            <div className="issue-card-top">
+              <span className="ticket-pill">{issue.ticketId}</span>
+              <StatusBadge value={issue.status} />
+            </div>
+            <h3>{issue.title}</h3>
+            <div className="issue-meta">
+              <span>{issue.product}</span>
+              <span>{issue.type}</span>
+              <span>{issue.category}</span>
+            </div>
+            <div className="issue-card-grid">
+              <Info label="Created By" value={personLabel(issue.createdBy)} />
+              <Info label="Priority" value={<PriorityBadge value={issue.priority} />} />
+              {showPending && <Info label="Pending" value={`${issue.pendingDays} days`} />}
+              <Info label="Created" value={formatDate(issue.createdAt)} />
+              {(onAssign || onSelfAssign || onDelete) && (
+                <Info
+                  label="Assigned To"
+                  value={
+                    issue.assignedTo
+                      ? <span className="assigned-chip">{issue.assignedTo.name}</span>
+                      : <span className="unassigned-chip">Unassigned</span>
+                  }
+                />
               )}
             </div>
-          )}
-        </article>
-      ))}
+            {(onView || onSelect || onDelete || onAssign || onSelfAssign) && (
+              <div className="issue-actions">
+                {onView && (
+                  <button className="small-button" onClick={() => onView(issue)}>
+                    <Eye size={16} /> View Details
+                  </button>
+                )}
+                {onSelect && (
+                  <button className="small-button" onClick={() => onSelect(issue)}>
+                    Update Status
+                  </button>
+                )}
+                {onAssign && (
+                  <button className="small-button assign-button" onClick={() => onAssign(issue)}>
+                    <UserCog size={16} /> Assign Dev
+                  </button>
+                )}
+                {onSelfAssign && isUnassigned && (
+                  <button className="small-button self-assign-button" onClick={() => onSelfAssign(issue)}>
+                    <UserCheck size={16} /> Assign to Me
+                  </button>
+                )}
+                {onSelfAssign && isAssignedToMe && (
+                  <span className="assigned-to-me-badge">
+                    <UserCheck size={14} /> Assigned to me
+                  </span>
+                )}
+                {onDelete && (
+                  <button className="small-button danger-button" onClick={() => onDelete(issue)}>
+                    <Trash2 size={16} /> Delete
+                  </button>
+                )}
+              </div>
+            )}
+          </article>
+        );
+      })}
     </div>
   );
 }
+
+/* ─── Docs Page ───────────────────────────────────────────────────────────── */
 
 function DocsPage({ onNavigate, inApp = false }) {
   return (
@@ -569,17 +927,29 @@ function DocsPage({ onNavigate, inApp = false }) {
         <article className="surface doc-card">
           <span className="eyebrow">For developers</span>
           <h2>Manage as cards</h2>
-          <p>Filter by product, status, priority, type, or category. Open an issue card, change status, and add a mandatory comment so the user understands what changed.</p>
+          <p>Filter by product, status, priority, type, or category. Open an issue card, change status (including Rejected for invalid bugs), and add a mandatory comment so the user understands what changed.</p>
+        </article>
+        <article className="surface doc-card">
+          <span className="eyebrow">For admins</span>
+          <h2>Team & assignment control</h2>
+          <p>Create developer accounts, assign developers to specific tickets, delete invalid or duplicate bugs, and view the full dashboard with all task assignments.</p>
         </article>
         <article className="surface doc-card">
           <span className="eyebrow">Routes</span>
           <h2>Portal paths</h2>
-          <p>Use /my-tickets, /report, /track, /dashboard, /manage, and /docs. Developer-only routes depend on the logged-in role.</p>
+          <p>Public: /docs. Protected (login required): /my-tickets, /report, /track, /dashboard, /manage, /my-tasks, /manage-devs. Developer and admin routes enforce role-based access.</p>
+        </article>
+        <article className="surface doc-card">
+          <span className="eyebrow">Statuses</span>
+          <h2>Ticket lifecycle</h2>
+          <p>Open → On Hold → Resolved (closed positively), or Rejected (invalid/duplicate bug). Each status change requires a mandatory developer comment explaining the decision.</p>
         </article>
       </div>
     </section>
   );
 }
+
+/* ─── Shared UI components ────────────────────────────────────────────────── */
 
 function PageHeader({ title, subtitle, action }) {
   return (
@@ -590,6 +960,33 @@ function PageHeader({ title, subtitle, action }) {
       </div>
       {action}
     </header>
+  );
+}
+
+function PasswordField({ label, value, onChange, required = false }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <div className="password-wrap">
+        <input
+          type={visible ? 'text' : 'password'}
+          value={value}
+          required={required}
+          onChange={(event) => onChange(event.target.value)}
+          autoComplete={visible ? 'off' : 'current-password'}
+        />
+        <button
+          type="button"
+          className="password-toggle"
+          onClick={() => setVisible((current) => !current)}
+          title={visible ? 'Hide password' : 'Show password'}
+          aria-label={visible ? 'Hide password' : 'Show password'}
+        >
+          {visible ? <EyeOff size={18} /> : <Eye size={18} />}
+        </button>
+      </div>
+    </label>
   );
 }
 
@@ -624,9 +1021,9 @@ function Select({ label, value, options, onChange }) {
   );
 }
 
-function Metric({ icon: Icon, label, value }) {
+function Metric({ icon: Icon, label, value, color = 'teal' }) {
   return (
-    <div className="metric surface">
+    <div className={`metric surface metric--${color}`}>
       <Icon size={22} />
       <span>{label}</span>
       <strong>{value}</strong>
@@ -634,7 +1031,7 @@ function Metric({ icon: Icon, label, value }) {
   );
 }
 
-function IssueTrendChart({ data, error }) {
+function IssueTrendChart({ data, loading, error }) {
   const series = data?.series || [];
   const maxCount = Math.max(data?.maxCount || 0, 1);
 
@@ -643,34 +1040,42 @@ function IssueTrendChart({ data, error }) {
       <div className="chart-header">
         <div>
           <h2>Issue Creation Trend</h2>
-          <p>{data?.days || 30} day created count ratio</p>
+          <p>{data?.days || 30} day created count</p>
         </div>
         <strong>{data?.totalCreated || 0} created</strong>
       </div>
       {error && <Notice tone="error">{error}</Notice>}
-      <div className="chart-bars">
-        {series.map((point, index) => (
-          <div className="chart-column" key={point.date}>
-            <div className="chart-stack" title={`${point.date}: ${point.total} created`}>
-              <span
-                className="chart-segment bugs"
-                style={{ height: `${(point.bugs / maxCount) * 100}%` }}
-              />
-              <span
-                className="chart-segment requirements"
-                style={{ height: `${(point.requirements / maxCount) * 100}%` }}
-              />
-            </div>
-            {(index === 0 || index === series.length - 1 || index % 7 === 0) && (
-              <small>{formatShortDate(point.date)}</small>
-            )}
+      {loading && <LoadingPanel label="Loading trend data" />}
+      {!loading && !error && series.length === 0 && (
+        <div className="chart-empty">No issues in this period</div>
+      )}
+      {!loading && series.length > 0 && (
+        <>
+          <div className="chart-bars">
+            {series.map((point, index) => (
+              <div className="chart-column" key={point.date}>
+                <div className="chart-stack" title={`${point.date}: ${point.total} created`}>
+                  <span
+                    className="chart-segment bugs"
+                    style={{ height: `${((point.bugs || 0) / maxCount) * 100}%` }}
+                  />
+                  <span
+                    className="chart-segment requirements"
+                    style={{ height: `${((point.requirements || 0) / maxCount) * 100}%` }}
+                  />
+                </div>
+                {(index === 0 || index === series.length - 1 || index % 7 === 0) && (
+                  <small>{formatShortDate(point.date)}</small>
+                )}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      <div className="chart-legend">
-        <span><i className="legend-dot bugs" /> Bugs</span>
-        <span><i className="legend-dot requirements" /> New requirements</span>
-      </div>
+          <div className="chart-legend">
+            <span><i className="legend-dot bugs" /> Bugs</span>
+            <span><i className="legend-dot requirements" /> New requirements</span>
+          </div>
+        </>
+      )}
     </section>
   );
 }
@@ -685,7 +1090,6 @@ function PriorityBadge({ value }) {
 
 function CommentSummary({ comment }) {
   if (!comment) return 'No comment yet';
-
   return (
     <span className="comment-summary">
       <span>{comment.comment}</span>
@@ -708,6 +1112,17 @@ function Notice({ tone, children }) {
   return <div className={`notice ${tone}`}><Icon size={18} /> <span>{children}</span></div>;
 }
 
+function LoadingPanel({ label }) {
+  return (
+    <div className="loading-panel surface">
+      <LoaderCircle className="spin" size={22} />
+      <span>{label}</span>
+    </div>
+  );
+}
+
+/* ─── Helpers ─────────────────────────────────────────────────────────────── */
+
 function latestComment(issue) {
   return issue.developerComments?.length ? issue.developerComments[issue.developerComments.length - 1] : null;
 }
@@ -729,8 +1144,9 @@ function summarizeByStatus(issues) {
     if (issue.status === 'Open') summary.open += 1;
     if (issue.status === 'On Hold') summary.onHold += 1;
     if (issue.status === 'Resolved') summary.resolved += 1;
+    if (issue.status === 'Rejected') summary.rejected += 1;
     return summary;
-  }, { open: 0, onHold: 0, resolved: 0 });
+  }, { open: 0, onHold: 0, resolved: 0, rejected: 0 });
 }
 
 function splitIssuesByType(issues) {
@@ -743,7 +1159,6 @@ function splitIssuesByType(issues) {
 
 function dateFilterParams(filter) {
   if (filter === 'all') return {};
-
   const start = new Date();
   start.setDate(start.getDate() - (filter === 'last-week' ? 7 : 30));
   return { startDate: start.toISOString().slice(0, 10) };
@@ -755,15 +1170,19 @@ function personLabel(person) {
   return person.name || person.email || '-';
 }
 
+/* ─── API hooks ───────────────────────────────────────────────────────────── */
+
 function useApi(path, token, deps = []) {
   const [tick, setTick] = useState(0);
-  const [state, setState] = useState({ data: null, error: '' });
+  const [state, setState] = useState({ data: null, error: '', loading: true });
   useEffect(() => {
     let active = true;
+    setState((current) => ({ ...current, error: '', loading: true }));
     api(path, { token })
-      .then((data) => active && setState({ data, error: '' }))
-      .catch((error) => active && setState({ data: null, error: error.message }));
+      .then((data) => active && setState({ data, error: '', loading: false }))
+      .catch((error) => active && setState({ data: null, error: error.message, loading: false }));
     return () => { active = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path, token, tick, ...deps]);
   return { ...state, reload: () => setTick((value) => value + 1) };
 }
