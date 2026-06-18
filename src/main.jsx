@@ -3,13 +3,20 @@ import { createRoot } from 'react-dom/client';
 import {
   AlertCircle,
   BarChart3,
+  BookOpen,
   Bug,
   CheckCircle2,
   ClipboardList,
   Clock,
+  Eye,
+  Frown,
+  HeartHandshake,
+  Home,
+  LoaderCircle,
   LogOut,
   Plus,
   Search,
+  Smile,
   UserPlus,
 } from 'lucide-react';
 import './styles.css';
@@ -21,20 +28,51 @@ const categories = ['UI', 'Backend/API', 'Login/Auth', 'Payment', 'Performance',
 const priorities = ['Low', 'Medium', 'High', 'Critical'];
 const statuses = ['Open', 'On Hold', 'Resolved'];
 const devices = ['Chrome on Mac', 'Chrome on Windows', 'Chrome on Android', 'Safari on iPhone', 'Safari on Mac', 'Firefox', 'Edge', 'Mobile App', 'Other'];
+const routes = {
+  '/': 'report',
+  '/my-tickets': 'my',
+  '/my-issues': 'my',
+  '/report': 'report',
+  '/track': 'track',
+  '/dashboard': 'dashboard',
+  '/manage': 'manage',
+  '/docs': 'docs',
+};
+
+function viewFromPath() {
+  return routes[window.location.pathname] || 'report';
+}
+
+function pathFromView(view) {
+  return Object.entries(routes).find(([, routeView]) => routeView === view)?.[0] || '/report';
+}
 
 function App() {
   const [session, setSession] = useState(() => {
     const raw = localStorage.getItem('bugyou-session');
     return raw ? JSON.parse(raw) : null;
   });
-  const [view, setView] = useState('report');
+  const [view, setView] = useState(viewFromPath);
 
   useEffect(() => {
     if (session) localStorage.setItem('bugyou-session', JSON.stringify(session));
     else localStorage.removeItem('bugyou-session');
   }, [session]);
 
-  if (!session) return <AuthScreen onSession={setSession} />;
+  useEffect(() => {
+    const syncRoute = () => setView(viewFromPath());
+    window.addEventListener('popstate', syncRoute);
+    return () => window.removeEventListener('popstate', syncRoute);
+  }, []);
+
+  function navigate(nextView) {
+    const path = pathFromView(nextView);
+    setView(nextView);
+    window.history.pushState({}, '', path);
+  }
+
+  if (!session && view !== 'docs') return <AuthScreen onSession={setSession} onDocs={() => navigate('docs')} />;
+  if (!session && view === 'docs') return <DocsPage onNavigate={navigate} />;
 
   const isDeveloper = session.user.role === 'developer';
   const navItems = isDeveloper
@@ -42,11 +80,13 @@ function App() {
         ['dashboard', 'Dashboard', BarChart3],
         ['manage', 'Bug Management', ClipboardList],
         ['track', 'Track Ticket', Search],
+        ['docs', 'Portal Guide', BookOpen],
       ]
     : [
+        ['my', 'My Tickets', ClipboardList],
         ['report', 'Report Issue', Plus],
         ['track', 'Track Ticket', Search],
-        ['my', 'My Issues', ClipboardList],
+        ['docs', 'Portal Guide', BookOpen],
       ];
 
   return (
@@ -61,7 +101,7 @@ function App() {
         </div>
         <nav>
           {navItems.map(([id, label, Icon]) => (
-            <button key={id} className={view === id ? 'active' : ''} onClick={() => setView(id)}>
+            <button key={id} className={view === id ? 'active' : ''} onClick={() => navigate(id)}>
               <Icon size={18} />
               {label}
             </button>
@@ -77,6 +117,7 @@ function App() {
       </aside>
 
       <main className="content">
+        {view === 'docs' && <DocsPage onNavigate={navigate} inApp />}
         {view === 'report' && <ReportIssue token={session.token} />}
         {view === 'track' && <TrackTicket token={session.token} />}
         {view === 'my' && <MyIssues token={session.token} />}
@@ -87,14 +128,14 @@ function App() {
   );
 }
 
-function AuthScreen({ onSession }) {
+function AuthScreen({ onSession, onDocs }) {
   const [mode, setMode] = useState('login');
   const [form, setForm] = useState({ name: '', email: '', password: '' });
-  const [state, setState] = useState({ loading: false, error: '' });
+  const [state, setState] = useState({ loading: false, error: '', success: false });
 
   async function submit(event) {
     event.preventDefault();
-    setState({ loading: true, error: '' });
+    setState({ loading: true, error: '', success: false });
     const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/register';
     const payload = mode === 'login'
       ? { email: form.email, password: form.password }
@@ -102,9 +143,10 @@ function AuthScreen({ onSession }) {
 
     try {
       const data = await api(endpoint, { method: 'POST', body: payload });
+      setState({ loading: false, error: '', success: true });
       onSession(data);
     } catch (error) {
-      setState({ loading: false, error: error.message });
+      setState({ loading: false, error: error.message, success: false });
     }
   }
 
@@ -115,13 +157,14 @@ function AuthScreen({ onSession }) {
           <span className="brand-mark"><Bug size={22} /></span>
           <div>
             <strong>BugYou</strong>
-            <small>Minimal bug reporting</small>
+            <small>Calm issue care portal</small>
           </div>
         </div>
         <form onSubmit={submit}>
           <div className="form-heading">
-            <h1>{mode === 'login' ? 'Sign in' : 'Create account'}</h1>
-            <p>{mode === 'login' ? 'Access your issue workspace.' : 'User accounts are created here.'}</p>
+            <span className="eyebrow"><HeartHandshake size={15} /> Mobile first support desk</span>
+            <h1>{mode === 'login' ? 'Welcome back' : 'Create account'}</h1>
+            <p>{mode === 'login' ? 'Bring every product issue into one gentle, accountable place.' : 'Start reporting issues with clear ticket tracking.'}</p>
           </div>
           {mode === 'register' && (
             <Field label="Name" value={form.name} onChange={(name) => setForm({ ...form, name })} required />
@@ -129,13 +172,20 @@ function AuthScreen({ onSession }) {
           <Field label="Email" type="email" value={form.email} onChange={(email) => setForm({ ...form, email })} required />
           <Field label="Password" type="password" value={form.password} onChange={(password) => setForm({ ...form, password })} required />
           {state.error && <Notice tone="error">{state.error}</Notice>}
+          {state.success && <Notice tone="success">Login complete. Opening your workspace.</Notice>}
           <button className="primary-button" disabled={state.loading}>
-            {mode === 'login' ? 'Sign in' : 'Create user'}
+            {state.loading && <LoaderCircle className="spin" size={18} />}
+            {!state.loading && (mode === 'login' ? 'Sign in' : 'Create user')}
+            {state.loading && (mode === 'login' ? 'Checking account' : 'Creating user')}
           </button>
         </form>
         <button className="text-button" onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>
           <UserPlus size={16} />
           {mode === 'login' ? 'Create a user account' : 'Already have an account'}
+        </button>
+        <button className="text-button muted" onClick={onDocs}>
+          <BookOpen size={16} />
+          Read portal guide
         </button>
       </section>
     </main>
@@ -158,17 +208,21 @@ function ReportIssue({ token }) {
   });
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   async function submit(event) {
     event.preventDefault();
     setError('');
     setResult(null);
+    setLoading(true);
     try {
       const data = await api('/api/issues', { method: 'POST', token, body: form });
       setResult(data);
       setForm({ ...form, title: '', description: '', attachmentUrl: '', stepsToReproduce: '', expectedResult: '', actualResult: '' });
     } catch (err) {
       setError(err.message);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -189,7 +243,10 @@ function ReportIssue({ token }) {
         <TextArea label="Actual Result" value={form.actualResult} onChange={(actualResult) => setForm({ ...form, actualResult })} />
         {error && <Notice tone="error">{error}</Notice>}
         {result && <Notice tone="success">Created successfully. Ticket ID: {result.ticketId}</Notice>}
-        <button className="primary-button">Submit Issue</button>
+        <button className="primary-button" disabled={loading}>
+          {loading && <LoaderCircle className="spin" size={18} />}
+          {loading ? 'Creating ticket' : 'Submit Issue'}
+        </button>
       </form>
     </section>
   );
@@ -199,16 +256,20 @@ function TrackTicket({ token }) {
   const [ticketId, setTicketId] = useState('');
   const [issue, setIssue] = useState(null);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   async function track(event) {
     event.preventDefault();
     setError('');
     setIssue(null);
+    setLoading(true);
     try {
       const data = await api(`/api/issues/track/${ticketId}`, { token });
       setIssue(data.issue);
     } catch (err) {
       setError(err.message);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -217,7 +278,10 @@ function TrackTicket({ token }) {
       <PageHeader title="Track Ticket" subtitle="Look up status and latest developer comments." />
       <form className="surface search-row" onSubmit={track}>
         <Field label="Ticket ID" value={ticketId} onChange={setTicketId} placeholder="BUG-2026-001" required />
-        <button className="primary-button"><Search size={17} /> Track</button>
+        <button className="primary-button" disabled={loading}>
+          {loading ? <LoaderCircle className="spin" size={17} /> : <Search size={17} />}
+          {loading ? 'Tracking' : 'Track'}
+        </button>
       </form>
       {error && <Notice tone="error">{error}</Notice>}
       {issue && <IssueDetail issue={issue} />}
@@ -229,7 +293,7 @@ function MyIssues({ token }) {
   const { data, error, reload } = useApi('/api/issues/my', token);
   return (
     <section>
-      <PageHeader title="My Issues" subtitle="Issues reported from your account." action={<button className="secondary-button" onClick={reload}>Refresh</button>} />
+      <PageHeader title="My Tickets" subtitle="Issues and requirements reported from your account." action={<button className="secondary-button" onClick={reload}>Refresh</button>} />
       {error && <Notice tone="error">{error}</Notice>}
       <IssueTable issues={data?.issues || []} />
     </section>
@@ -239,54 +303,95 @@ function MyIssues({ token }) {
 function DeveloperDashboard({ token }) {
   const [filter, setFilter] = useState('all');
   const [product, setProduct] = useState('');
-  const dashboardPath = `/api/developer/dashboard?filter=${filter}${product ? `&product=${product}` : ''}`;
+  const [viewing, setViewing] = useState(null);
   const trendRange = filter === 'last-week' ? 'last-week' : 'last-month';
   const trendPath = `/api/developer/analytics/issue-trend?range=${trendRange}${product ? `&product=${product}` : ''}`;
-  const { data, error } = useApi(dashboardPath, token, [filter, product]);
   const trend = useApi(trendPath, token, [trendRange, product]);
   const reminders = useApi('/api/developer/reminders', token);
-  const summary = data?.summary || {};
+  const summaryQuery = new URLSearchParams({
+    ...(product ? { product } : {}),
+    ...dateFilterParams(filter),
+  }).toString();
+  const bugIssues = useApi(`/api/developer/issues?type=Bug${summaryQuery ? `&${summaryQuery}` : ''}`, token, [filter, product]);
+  const requirementIssues = useApi(`/api/developer/issues?type=New Requirement${summaryQuery ? `&${summaryQuery}` : ''}`, token, [filter, product]);
+  const bugSummary = summarizeByStatus(bugIssues.data?.issues || []);
+  const requirementSummary = summarizeByStatus(requirementIssues.data?.issues || []);
+  const remindersByType = splitIssuesByType((reminders.data?.reminders || []).map((item) => ({ ...item.issue, pendingDays: item.pendingDays })));
 
   return (
     <section>
-      <PageHeader title="Developer Dashboard" subtitle="Status summary and old pending reminders." />
+      <PageHeader title="Developer Dashboard" subtitle="Bugs and new requirements are tracked separately." />
       <div className="filters surface">
         <Select label="Period" value={filter} options={['all', 'last-week', 'last-month']} onChange={setFilter} />
         <Select label="Product" value={product} options={['', ...products]} onChange={setProduct} />
       </div>
-      {error && <Notice tone="error">{error}</Notice>}
-      <div className="metric-grid">
-        <Metric icon={AlertCircle} label="Total Open Bugs" value={summary.totalOpenBugs || 0} />
-        <Metric icon={Clock} label="Total On Hold Bugs" value={summary.totalOnHoldBugs || 0} />
-        <Metric icon={CheckCircle2} label="Total Resolved Bugs" value={summary.totalResolvedBugs || 0} />
+      {bugIssues.error && <Notice tone="error">{bugIssues.error}</Notice>}
+      {requirementIssues.error && <Notice tone="error">{requirementIssues.error}</Notice>}
+      <div className="dashboard-split">
+        <section>
+          <h2 className="section-title">Bugs</h2>
+          <div className="metric-grid">
+            <Metric icon={AlertCircle} label="Open Bugs" value={bugSummary.open} />
+            <Metric icon={Clock} label="On Hold Bugs" value={bugSummary.onHold} />
+            <Metric icon={CheckCircle2} label="Resolved Bugs" value={bugSummary.resolved} />
+          </div>
+        </section>
+        <section>
+          <h2 className="section-title">New Requirements</h2>
+          <div className="metric-grid">
+            <Metric icon={AlertCircle} label="Open Requirements" value={requirementSummary.open} />
+            <Metric icon={Clock} label="On Hold Requirements" value={requirementSummary.onHold} />
+            <Metric icon={CheckCircle2} label="Resolved Requirements" value={requirementSummary.resolved} />
+          </div>
+        </section>
       </div>
       <IssueTrendChart data={trend.data} error={trend.error} />
-      <h2 className="section-title">Pending Reminders</h2>
+      <h2 className="section-title">Pending Bug Reminders</h2>
       {reminders.error && <Notice tone="error">{reminders.error}</Notice>}
-      <IssueTable issues={(reminders.data?.reminders || []).map((item) => ({ ...item.issue, pendingDays: item.pendingDays }))} showPending />
+      <IssueTable issues={remindersByType.bugs} showPending onView={setViewing} />
+      <h2 className="section-title separate-title">Pending Requirement Reminders</h2>
+      <IssueTable issues={remindersByType.requirements} showPending onView={setViewing} />
+      {viewing && <TicketDetailModal issue={viewing} onClose={() => setViewing(null)} />}
     </section>
   );
 }
 
 function BugManagement({ token }) {
   const [filters, setFilters] = useState({ product: '', status: '', priority: '', type: '', category: '' });
+  const [issueKind, setIssueKind] = useState('Bug');
   const [selected, setSelected] = useState(null);
-  const query = new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([, value]) => value))).toString();
+  const [viewing, setViewing] = useState(null);
+  const activeFilters = { ...filters, type: issueKind };
+  const query = new URLSearchParams(Object.fromEntries(Object.entries(activeFilters).filter(([, value]) => value))).toString();
   const path = `/api/developer/issues${query ? `?${query}` : ''}`;
-  const { data, error, reload } = useApi(path, token, [query]);
+  const { data, error, reload } = useApi(path, token, [query, issueKind]);
 
   return (
     <section>
-      <PageHeader title="Bug Management" subtitle="Filter issues and update status with a mandatory comment." action={<button className="secondary-button" onClick={reload}>Refresh</button>} />
+      <PageHeader title="Ticket Management" subtitle="Bugs and new requirements stay in separate work queues." action={<button className="secondary-button" onClick={reload}>Refresh</button>} />
+      <div className="segmented-tabs" role="tablist" aria-label="Ticket type">
+        {['Bug', 'New Requirement'].map((type) => (
+          <button
+            key={type}
+            role="tab"
+            aria-selected={issueKind === type}
+            className={issueKind === type ? 'active' : ''}
+            onClick={() => setIssueKind(type)}
+            type="button"
+          >
+            {type === 'Bug' ? 'Bugs' : 'New Requirements'}
+          </button>
+        ))}
+      </div>
       <div className="filters surface">
         <Select label="Product" value={filters.product} options={['', ...products]} onChange={(product) => setFilters({ ...filters, product })} />
         <Select label="Status" value={filters.status} options={['', ...statuses]} onChange={(status) => setFilters({ ...filters, status })} />
         <Select label="Priority" value={filters.priority} options={['', ...priorities]} onChange={(priority) => setFilters({ ...filters, priority })} />
-        <Select label="Type" value={filters.type} options={['', 'Bug', 'New Requirement']} onChange={(type) => setFilters({ ...filters, type })} />
         <Select label="Category" value={filters.category} options={['', ...categories]} onChange={(category) => setFilters({ ...filters, category })} />
       </div>
       {error && <Notice tone="error">{error}</Notice>}
-      <IssueTable issues={data?.issues || []} onSelect={setSelected} />
+      <IssueTable issues={data?.issues || []} onSelect={setSelected} onView={setViewing} />
+      {viewing && <TicketDetailModal issue={viewing} onClose={() => setViewing(null)} />}
       {selected && <StatusModal issue={selected} token={token} onClose={() => setSelected(null)} onSaved={() => { setSelected(null); reload(); }} />}
     </section>
   );
@@ -296,15 +401,18 @@ function StatusModal({ issue, token, onClose, onSaved }) {
   const [status, setStatus] = useState(issue.status);
   const [comment, setComment] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   async function save(event) {
     event.preventDefault();
     setError('');
+    setLoading(true);
     try {
       await api(`/api/developer/issues/${issue.id}/status`, { method: 'PATCH', token, body: { status, comment } });
       onSaved();
     } catch (err) {
       setError(err.message);
+      setLoading(false);
     }
   }
 
@@ -318,7 +426,10 @@ function StatusModal({ issue, token, onClose, onSaved }) {
         {error && <Notice tone="error">{error}</Notice>}
         <div className="modal-actions">
           <button type="button" className="secondary-button" onClick={onClose}>Cancel</button>
-          <button className="primary-button">Save</button>
+          <button className="primary-button" disabled={loading}>
+            {loading && <LoaderCircle className="spin" size={17} />}
+            {loading ? 'Saving' : 'Save'}
+          </button>
         </div>
       </form>
     </div>
@@ -342,45 +453,131 @@ function IssueDetail({ issue }) {
   );
 }
 
-function IssueTable({ issues, onSelect, showPending = false }) {
+function TicketDetailModal({ issue, onClose }) {
   return (
-    <div className="table-wrap surface">
-      <table>
-        <thead>
-          <tr>
-            <th>Ticket ID</th>
-            <th>Product</th>
-            <th>Title</th>
-            <th>Type</th>
-            <th>Created By</th>
-            <th>Priority</th>
-            <th>Status</th>
-            {showPending && <th>Pending</th>}
-            <th>Created</th>
-            {onSelect && <th>Action</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {issues.length === 0 && (
-            <tr><td colSpan={8 + (showPending ? 1 : 0) + (onSelect ? 1 : 0)} className="empty">No issues found</td></tr>
+    <div className="modal-backdrop">
+      <section className="modal detail-modal" role="dialog" aria-modal="true" aria-label="Ticket details">
+        <div className="detail-modal-header">
+          <div>
+            <span className="ticket-pill">{issue.ticketId}</span>
+            <h2>{issue.title}</h2>
+            <div className="issue-meta">
+              <span>{issue.product}</span>
+              <span>{issue.type}</span>
+              <span>{issue.category}</span>
+            </div>
+          </div>
+          <StatusBadge value={issue.status} />
+        </div>
+
+        <div className="detail-grid">
+          <Info label="Created By" value={personLabel(issue.createdBy)} />
+          <Info label="Priority" value={<PriorityBadge value={issue.priority} />} />
+          <Info label="Created Date" value={formatDate(issue.createdAt)} />
+          <Info label="Browser / Device" value={issue.browserDevice || '-'} />
+          <Info label="Attachment" value={attachmentValue(issue.attachmentUrl)} wide />
+          <Info label="Description" value={longText(issue.description)} wide />
+          <Info label="Steps to Reproduce" value={longText(issue.stepsToReproduce)} wide />
+          <Info label="Expected Result" value={longText(issue.expectedResult)} wide />
+          <Info label="Actual Result" value={longText(issue.actualResult)} wide />
+        </div>
+
+        <div className="comment-history">
+          <h3>Developer Comments</h3>
+          {issue.developerComments?.length ? (
+            issue.developerComments.map((comment, index) => (
+              <div className="comment-entry" key={`${comment.updatedAt}-${index}`}>
+                <span>{comment.oldStatus} to {comment.newStatus}</span>
+                <p>{comment.comment}</p>
+                <small>By {comment.updatedBy || 'Developer'} · {formatDate(comment.updatedAt)}</small>
+              </div>
+            ))
+          ) : (
+            <p>No developer comments yet.</p>
           )}
-          {issues.map((issue) => (
-            <tr key={issue.id}>
-              <td>{issue.ticketId}</td>
-              <td>{issue.product}</td>
-              <td>{issue.title}</td>
-              <td>{issue.type}</td>
-              <td>{personLabel(issue.createdBy)}</td>
-              <td><PriorityBadge value={issue.priority} /></td>
-              <td><StatusBadge value={issue.status} /></td>
-              {showPending && <td>{issue.pendingDays} days</td>}
-              <td>{formatDate(issue.createdAt)}</td>
-              {onSelect && <td><button className="small-button" onClick={() => onSelect(issue)}>Update</button></td>}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+        </div>
+
+        <div className="modal-actions">
+          <button type="button" className="primary-button" onClick={onClose}>Close</button>
+        </div>
+      </section>
     </div>
+  );
+}
+
+function IssueTable({ issues, onSelect, onView, showPending = false }) {
+  return (
+    <div className="issue-list">
+      {issues.length === 0 && <div className="empty surface">No issues found</div>}
+      {issues.map((issue) => (
+        <article className="issue-card surface" key={issue.id}>
+          <div className="issue-card-top">
+            <span className="ticket-pill">{issue.ticketId}</span>
+            <StatusBadge value={issue.status} />
+          </div>
+          <h3>{issue.title}</h3>
+          <div className="issue-meta">
+            <span>{issue.product}</span>
+            <span>{issue.type}</span>
+            <span>{issue.category}</span>
+          </div>
+          <div className="issue-card-grid">
+            <Info label="Created By" value={personLabel(issue.createdBy)} />
+            <Info label="Priority" value={<PriorityBadge value={issue.priority} />} />
+            {showPending && <Info label="Pending" value={`${issue.pendingDays} days`} />}
+            <Info label="Created" value={formatDate(issue.createdAt)} />
+          </div>
+          {(onView || onSelect) && (
+            <div className="issue-actions">
+              {onView && (
+                <button className="small-button" onClick={() => onView(issue)}>
+                  <Eye size={16} /> View Details
+                </button>
+              )}
+              {onSelect && (
+                <button className="small-button" onClick={() => onSelect(issue)}>
+                  Update Status
+                </button>
+              )}
+            </div>
+          )}
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function DocsPage({ onNavigate, inApp = false }) {
+  return (
+    <section className={inApp ? '' : 'docs-page'}>
+      <PageHeader
+        title="BugYou Portal Guide"
+        subtitle="How users and developers move an issue from report to resolution."
+        action={!inApp && <button className="secondary-button" onClick={() => onNavigate('report')}><Home size={16} /> Back to login</button>}
+      />
+      <div className="docs-grid">
+        <article className="surface doc-card">
+          <span className="eyebrow">For users</span>
+          <h2>Report with clarity</h2>
+          <p>Choose the product, category, priority, device, and add what happened versus what you expected. After submit, copy the generated ticket ID.</p>
+        </article>
+        <article className="surface doc-card">
+          <span className="eyebrow">Tracking</span>
+          <h2>Follow the feeling of progress</h2>
+          <p>Use Track Ticket with your ticket ID to see status, priority, and the latest developer comment without opening a spreadsheet or asking someone manually.</p>
+        </article>
+        <article className="surface doc-card">
+          <span className="eyebrow">For developers</span>
+          <h2>Manage as cards</h2>
+          <p>Filter by product, status, priority, type, or category. Open an issue card, change status, and add a mandatory comment so the user understands what changed.</p>
+        </article>
+        <article className="surface doc-card">
+          <span className="eyebrow">Routes</span>
+          <h2>Portal paths</h2>
+          <p>Use /my-tickets, /report, /track, /dashboard, /manage, and /docs. Developer-only routes depend on the logged-in role.</p>
+        </article>
+      </div>
+    </section>
   );
 }
 
@@ -507,11 +704,49 @@ function Info({ label, value, wide = false }) {
 }
 
 function Notice({ tone, children }) {
-  return <div className={`notice ${tone}`}>{children}</div>;
+  const Icon = tone === 'success' ? Smile : Frown;
+  return <div className={`notice ${tone}`}><Icon size={18} /> <span>{children}</span></div>;
 }
 
 function latestComment(issue) {
   return issue.developerComments?.length ? issue.developerComments[issue.developerComments.length - 1] : null;
+}
+
+function longText(value) {
+  return value ? <span className="long-text">{value}</span> : '-';
+}
+
+function attachmentValue(value) {
+  if (!value) return '-';
+  if (/^https?:\/\//i.test(value)) {
+    return <a href={value} target="_blank" rel="noreferrer">{value}</a>;
+  }
+  return value;
+}
+
+function summarizeByStatus(issues) {
+  return issues.reduce((summary, issue) => {
+    if (issue.status === 'Open') summary.open += 1;
+    if (issue.status === 'On Hold') summary.onHold += 1;
+    if (issue.status === 'Resolved') summary.resolved += 1;
+    return summary;
+  }, { open: 0, onHold: 0, resolved: 0 });
+}
+
+function splitIssuesByType(issues) {
+  return issues.reduce((groups, issue) => {
+    if (issue.type === 'New Requirement') groups.requirements.push(issue);
+    else groups.bugs.push(issue);
+    return groups;
+  }, { bugs: [], requirements: [] });
+}
+
+function dateFilterParams(filter) {
+  if (filter === 'all') return {};
+
+  const start = new Date();
+  start.setDate(start.getDate() - (filter === 'last-week' ? 7 : 30));
+  return { startDate: start.toISOString().slice(0, 10) };
 }
 
 function personLabel(person) {
