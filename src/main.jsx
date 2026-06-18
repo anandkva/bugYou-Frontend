@@ -901,17 +901,17 @@ function BugManagement({ token, session }) {
   }
 
   async function handleSelfAssign(issue) {
-  try {
-    await api(`/api/developer/issues/${issue.id}/assign-self`, {
-      method: "PATCH",
-      token,
-    });
+    try {
+      await api(`/api/developer/issues/${issue.id}/assign-self`, {
+        method: "PATCH",
+        token,
+      });
 
-    reload();
-  } catch (err) {
-    alert(err.message);
+      reload();
+    } catch (err) {
+      alert(err.message);
+    }
   }
-}
 
   return (
     <section>
@@ -967,13 +967,13 @@ function BugManagement({ token, session }) {
       {error && <Notice tone="error">{error}</Notice>}
       {loading && <LoadingPanel label="Loading tasks" />}
       <IssueTable
-  issues={data?.issues || []}
-  onSelect={isAdmin ? setSelected : undefined}
-  onView={setViewing}
-  onDelete={isAdmin ? handleDelete : undefined}
-  onAssign={isAdmin ? setAssigning : undefined}
-  onSelfAssign={!isAdmin ? handleSelfAssign : undefined}
-/>
+        issues={data?.issues || []}
+        onSelect={isAdmin ? setSelected : undefined}
+        onView={setViewing}
+        onDelete={isAdmin ? handleDelete : undefined}
+        onAssign={isAdmin ? setAssigning : undefined}
+        onSelfAssign={!isAdmin ? handleSelfAssign : undefined}
+      />
       {viewing && (
         <TicketDetailModal issue={viewing} onClose={() => setViewing(null)} />
       )}
@@ -1483,8 +1483,10 @@ function IssueTable({
 
 /* ─── Docs Page ───────────────────────────────────────────────────────────── */
 
+
 function DocsPage({ onNavigate, inApp = false }) {
   const navigate = useNavigate();
+
   const handleBack = () => {
     if (onNavigate) onNavigate("report");
     else navigate("/login");
@@ -1499,75 +1501,175 @@ function DocsPage({ onNavigate, inApp = false }) {
             <DevBetaBadge />
           </span>
         }
-        subtitle="How users and developers move an issue from report to resolution."
+        subtitle="Bridging the gap between product users and developers through transparent issue tracking."
         action={
           !inApp && (
             <button className="secondary-button" onClick={handleBack}>
-              <Home size={16} /> Back to login
+              <Home size={16} /> Back to Login
             </button>
           )
         }
       />
+
       <div className="docs-grid">
         <article className="surface doc-card">
-          <span className="eyebrow">For users</span>
-          <h2>Report with clarity</h2>
+          <span className="eyebrow">Overview</span>
+          <h2>Why BugYou?</h2>
           <p>
-            Choose the product, category, priority, device, and add what
-            happened versus what you expected. After submit, copy the generated
-            ticket ID.
+            BugYou is an internal issue management platform designed to connect
+            end users and developers through a centralized ticketing system.
+          </p>
+          <p>
+            Coordinators, Mentors, Operations Teams, Support Teams, and other
+            stakeholders can report bugs and feature requests while developers
+            can manage, track, and resolve them efficiently.
           </p>
         </article>
+
         <article className="surface doc-card">
-          <span className="eyebrow">Tracking</span>
-          <h2>Follow the feeling of progress</h2>
+          <span className="eyebrow">Problem Solved</span>
+          <h2>Reduce Communication Friction</h2>
           <p>
-            Use Track Ticket with your ticket ID to see status, priority, and
-            the latest developer comment without opening a spreadsheet or asking
-            someone manually.
+            Before BugYou, issues were reported through WhatsApp, Slack,
+            spreadsheets, calls, and emails, making tracking difficult.
+          </p>
+          <p>
+            Every reported issue now receives a unique ticket ID, making it
+            easier to track ownership, progress, duplicate reports, and
+            resolution history.
           </p>
         </article>
+
         <article className="surface doc-card">
-          <span className="eyebrow">For developers</span>
-          <h2>Manage as cards</h2>
+          <span className="eyebrow">End Users</span>
+          <h2>Report Issues Easily</h2>
           <p>
-            Use My Tasks to update status for tickets assigned to you. Bug
-            Management stays browse-only for developers, with filters by
-            product, status, priority, type, or category.
+            Users can create bug reports and feature requests by providing:
+          </p>
+          <ul>
+            <li>Product Name</li>
+            <li>Issue Category</li>
+            <li>Priority</li>
+            <li>Description</li>
+            <li>Steps to Reproduce</li>
+            <li>Expected Result</li>
+            <li>Actual Result</li>
+            <li>Attachment / Screenshot</li>
+          </ul>
+        </article>
+
+        <article className="surface doc-card">
+          <span className="eyebrow">Ticket Tracking</span>
+          <h2>Track Progress Anytime</h2>
+          <p>
+            Users can use the Track Ticket page to check:
+          </p>
+          <ul>
+            <li>Current Status</li>
+            <li>Assigned Developer</li>
+            <li>Priority</li>
+            <li>Latest Developer Comments</li>
+            <li>Resolution Updates</li>
+          </ul>
+        </article>
+
+        <article className="surface doc-card">
+          <span className="eyebrow">Developer Workflow</span>
+          <h2>Efficient Bug Management</h2>
+          <p>
+            Developers can browse reported issues, self-assign available
+            tickets, review complete issue details, and manage assigned work
+            through My Tasks.
+          </p>
+          <p>
+            Status updates are performed only from the My Tasks page to ensure
+            proper ownership and accountability.
           </p>
         </article>
+
         <article className="surface doc-card">
-          <span className="eyebrow">For admins</span>
-          <h2>Team & assignment control</h2>
+          <span className="eyebrow">Admin Controls</span>
+          <h2>Developer & Task Management</h2>
           <p>
-            Create developer accounts, assign developers to specific tickets,
-            update any ticket status, delete invalid or duplicate bugs, and view
-            the full dashboard with all task assignments.
+            Administrators can:
+          </p>
+          <ul>
+            <li>Create Developer Accounts</li>
+            <li>Assign Tickets</li>
+            <li>Update Ticket Status</li>
+            <li>Delete Invalid Tickets</li>
+            <li>Monitor Team Workload</li>
+          </ul>
+        </article>
+
+        <article className="surface doc-card">
+          <span className="eyebrow">Portal Features</span>
+          <h2>Key Features</h2>
+          <ul>
+            <li>Centralized Issue Tracking</li>
+            <li>Duplicate Bug Detection</li>
+            <li>Developer Assignment</li>
+            <li>Status Management</li>
+            <li>Ticket History</li>
+            <li>Analytics Dashboard</li>
+            <li>Priority Tracking</li>
+            <li>Comment History</li>
+          </ul>
+        </article>
+
+        <article className="surface doc-card">
+          <span className="eyebrow">Available Routes</span>
+          <h2>Portal Navigation</h2>
+          <ul>
+            <li><strong>/login</strong> — Login Page</li>
+            <li><strong>/docs</strong> — Portal Documentation</li>
+            <li><strong>/report</strong> — Create New Ticket</li>
+            <li><strong>/my-tickets</strong> — User Reported Tickets</li>
+            <li><strong>/track</strong> — Track Ticket Status</li>
+            <li><strong>/dashboard</strong> — Analytics Dashboard</li>
+            <li><strong>/manage</strong> — Bug Management</li>
+            <li><strong>/my-tasks</strong> — Developer Assigned Tasks</li>
+            <li><strong>/manage-devs</strong> — Developer Management</li>
+          </ul>
+        </article>
+
+        <article className="surface doc-card">
+          <span className="eyebrow">Ticket Lifecycle</span>
+          <h2>Issue Workflow</h2>
+          <p>
+            Reported → Open → Assigned → On Hold → Resolved
+          </p>
+          <p>
+            Or
+          </p>
+          <p>
+            Reported → Open → Rejected
+          </p>
+          <p>
+            Every status change requires a developer comment for transparency.
           </p>
         </article>
+
         <article className="surface doc-card">
-          <span className="eyebrow">Routes</span>
-          <h2>Portal paths</h2>
-          <p>
-            Public: /login and /docs. Protected: /my-tickets, /report, /track,
-            /dashboard, /manage, /my-tasks, /manage-devs. Unknown routes show a
-            404 page.
-          </p>
-        </article>
-        <article className="surface doc-card">
-          <span className="eyebrow">Statuses</span>
-          <h2>Ticket lifecycle</h2>
-          <p>
-            Open → On Hold → Resolved (closed positively), or Rejected
-            (invalid/duplicate bug). Each status change requires a mandatory
-            developer comment explaining the decision.
-          </p>
+          <span className="eyebrow">Benefits</span>
+          <h2>Why Teams Use BugYou</h2>
+          <ul>
+            <li>Reduced communication overhead</li>
+            <li>Clear ownership of issues</li>
+            <li>Faster bug resolution</li>
+            <li>Easy duplicate issue identification</li>
+            <li>Transparent progress tracking</li>
+            <li>Complete audit trail of updates</li>
+            <li>Improved collaboration between users and developers</li>
+          </ul>
         </article>
       </div>
+
       {!inApp && <AppMetaFooter />}
     </section>
   );
 }
+
 
 function NotFoundPage({ session }) {
   const homePath = defaultPath(session);
